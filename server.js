@@ -399,18 +399,14 @@ async function getAllData(interval = '1d', limit = 7) {
       }
     },
     
-    // Perp taker flow (historical time series from Binance/OKX APIs - aligned time range)
+    // Perp taker flow (historical time series from Binance/OKX APIs - matched period count)
     perpFlow: (() => {
-      // Get Binance time range to align OKX data
+      // Get Binance data (already limited by API)
       const binanceData = Array.isArray(binanceTakerFlow) ? binanceTakerFlow : [];
-      const binanceMinTime = binanceData.length ? Math.min(...binanceData.map(d => d.timestamp)) : 0;
-      const binanceMaxTime = binanceData.length ? Math.max(...binanceData.map(d => d.timestamp)) : Date.now();
       
-      // Filter OKX data to match Binance time range
-      const okxDataFiltered = (okxTakerVol?.data || []).filter(d => {
-        const ts = +d[0];
-        return ts >= binanceMinTime && ts <= binanceMaxTime;
-      });
+      // Take same number of periods from OKX (most recent)
+      const okxDataRaw = okxTakerVol?.data || [];
+      const okxDataLimited = okxDataRaw.slice(0, limit); // Match the requested limit
       
       return [
         ...binanceData.map(d => ({
@@ -418,7 +414,7 @@ async function getAllData(interval = '1d', limit = 7) {
           buyVol: +d.buyVol, sellVol: +d.sellVol,
           netFlow: +d.buyVol - +d.sellVol, ratio: +d.buySellRatio
         })),
-        ...okxDataFiltered.map(d => ({
+        ...okxDataLimited.map(d => ({
           exchange: 'OKX', time: +d[0],
           sellVol: +d[1], buyVol: +d[2],
           netFlow: +d[2] - +d[1], ratio: +d[2] / +d[1]
@@ -426,18 +422,14 @@ async function getAllData(interval = '1d', limit = 7) {
       ].sort((a, b) => b.time - a.time);
     })(),
     
-    // Aggregated perp flow across all exchanges with detailed breakdown (historical totals - aligned periods)
+    // Aggregated perp flow across all exchanges with detailed breakdown (historical totals - matched period count)
     perpFlowTotal: (() => {
-      // Get Binance time range to align OKX data
+      // Get Binance data (already limited by API)
       const binanceData = Array.isArray(binanceTakerFlow) ? binanceTakerFlow : [];
-      const binanceMinTime = binanceData.length ? Math.min(...binanceData.map(d => d.timestamp)) : 0;
-      const binanceMaxTime = binanceData.length ? Math.max(...binanceData.map(d => d.timestamp)) : Date.now();
       
-      // Filter OKX data to match Binance time range
-      const okxDataFiltered = (okxTakerVol?.data || []).filter(d => {
-        const ts = +d[0];
-        return ts >= binanceMinTime && ts <= binanceMaxTime;
-      });
+      // Take same number of periods from OKX (most recent)
+      const okxDataRaw = okxTakerVol?.data || [];
+      const okxDataLimited = okxDataRaw.slice(0, limit); // Match the requested limit
       
       return {
         exchanges: {
@@ -446,14 +438,14 @@ async function getAllData(interval = '1d', limit = 7) {
             buy: binanceData.reduce((sum, d) => sum + +d.buyVol, 0),
             sell: binanceData.reduce((sum, d) => sum + +d.sellVol, 0),
             periods: binanceData.length,
-            source: 'historical (aligned)'
+            source: `${limit} periods`
           },
           OKX: { 
-            net: okxDataFiltered.reduce((sum, d) => sum + (+d[2] - +d[1]), 0),
-            buy: okxDataFiltered.reduce((sum, d) => sum + +d[2], 0),
-            sell: okxDataFiltered.reduce((sum, d) => sum + +d[1], 0),
-            periods: okxDataFiltered.length,
-            source: 'historical (aligned)'
+            net: okxDataLimited.reduce((sum, d) => sum + (+d[2] - +d[1]), 0),
+            buy: okxDataLimited.reduce((sum, d) => sum + +d[2], 0),
+            sell: okxDataLimited.reduce((sum, d) => sum + +d[1], 0),
+            periods: okxDataLimited.length,
+            source: `${limit} periods`
           },
           Bybit: { 
             net: bybitPerpFlow.buyVol - bybitPerpFlow.sellVol, 

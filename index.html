@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BERA Flow Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; min-height: 100vh; padding: 16px; }
+        .container { max-width: 1600px; margin: 0 auto; }
+        h1 { font-size: 22px; margin-bottom: 6px; color: #f0f6fc; }
+        .subtitle { color: #8b949e; margin-bottom: 20px; font-size: 13px; }
+        .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .grid-6 { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+        @media (max-width: 1200px) { .grid-3, .grid-6 { grid-template-columns: repeat(3, 1fr); } }
+        @media (max-width: 800px) { .grid-2, .grid-3, .grid-6 { grid-template-columns: repeat(2, 1fr); } }
+        .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px; margin-bottom: 16px; }
+        .card-title { font-size: 13px; font-weight: 600; margin-bottom: 12px; color: #f0f6fc; display: flex; align-items: center; gap: 8px; }
+        .badge { font-size: 9px; background: #238636; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; }
+        .stat-label { font-size: 10px; color: #8b949e; text-transform: uppercase; margin-bottom: 2px; }
+        .stat-value { font-size: 18px; font-weight: 600; color: #f0f6fc; }
+        .stat-sub { font-size: 10px; color: #8b949e; margin-top: 2px; }
+        .positive { color: #3fb950; }
+        .negative { color: #f85149; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        th, td { padding: 8px 6px; text-align: left; border-bottom: 1px solid #21262d; }
+        th { color: #8b949e; font-weight: 500; font-size: 10px; text-transform: uppercase; }
+        td { font-family: 'SF Mono', Monaco, monospace; font-size: 11px; }
+        .flow-bar { height: 14px; background: #30363d; border-radius: 3px; overflow: hidden; display: flex; }
+        .flow-bar-buy { background: #3fb950; height: 100%; }
+        .flow-bar-sell { background: #f85149; height: 100%; }
+        .controls { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+        .control-group { display: flex; gap: 2px; background: #161b22; padding: 3px; border-radius: 6px; border: 1px solid #30363d; }
+        .control-label { font-size: 10px; color: #8b949e; margin-right: 6px; display: flex; align-items: center; }
+        .btn { background: transparent; border: none; color: #8b949e; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; }
+        .btn:hover { background: #30363d; color: #c9d1d9; }
+        .btn.active { background: #238636; color: white; }
+        .refresh-btn { background: #21262d; border: 1px solid #30363d; margin-left: auto; }
+        .last-updated { font-size: 10px; color: #8b949e; text-align: right; margin-top: 12px; }
+        .metric-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #21262d; font-size: 12px; }
+        .metric-row:last-child { border-bottom: none; }
+        .funding-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; }
+        .vol-type { font-size: 9px; padding: 1px 4px; border-radius: 3px; margin-right: 4px; }
+        .vol-type.spot { background: rgba(88,166,255,0.2); color: #58a6ff; }
+        .vol-type.perp { background: rgba(163,113,247,0.2); color: #a371f7; }
+        .summary-row { display: flex; gap: 24px; padding: 12px; background: #0d1117; border-radius: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+        .summary-item { text-align: center; }
+        .summary-item .label { font-size: 10px; color: #8b949e; text-transform: uppercase; }
+        .summary-item .value { font-size: 20px; font-weight: 600; }
+        .loading { text-align: center; padding: 40px; color: #8b949e; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🐻 BERA Flow Dashboard</h1>
+        <p class="subtitle">Real-time flow analysis • Spot + Perpetuals • 9 Exchanges incl. Upbit 🇰🇷</p>
+        
+        <div class="controls">
+            <span class="control-label">Timeframe:</span>
+            <div class="control-group">
+                <button class="btn time-btn" data-tf="1h">1H</button>
+                <button class="btn time-btn" data-tf="4h">4H</button>
+                <button class="btn time-btn" data-tf="12h">12H</button>
+                <button class="btn time-btn" data-tf="24h">24H</button>
+            </div>
+            <div class="control-group">
+                <button class="btn time-btn" data-tf="3d">3D</button>
+                <button class="btn time-btn" data-tf="5d">5D</button>
+                <button class="btn time-btn active" data-tf="7d">7D</button>
+                <button class="btn time-btn" data-tf="14d">14D</button>
+                <button class="btn time-btn" data-tf="30d">30D</button>
+            </div>
+            <button class="btn refresh-btn" id="refresh">↻ Refresh</button>
+            <button class="btn refresh-btn" id="info-btn">ℹ Info</button>
+            <span id="status" style="font-size: 10px; color: #8b949e;"></span>
+        </div>
+        
+        <!-- Info Modal -->
+        <div id="info-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);z-index:1000;padding:40px;overflow:auto">
+            <div style="max-width:700px;margin:0 auto;background:#161b22;border:1px solid #30363d;border-radius:12px;padding:24px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                    <h2 style="margin:0;font-size:18px">📊 Data Sources & Limitations</h2>
+                    <button id="close-info" style="background:none;border:none;color:#8b949e;font-size:24px;cursor:pointer">&times;</button>
+                </div>
+                
+                <div style="margin-bottom:20px">
+                    <h3 style="font-size:14px;color:#58a6ff;margin-bottom:8px">✅ Full Historical Support (30D works)</h3>
+                    <ul style="margin:0;padding-left:20px;color:#c9d1d9;font-size:13px;line-height:1.8">
+                        <li><strong>Binance spot klines</strong> — up to 1000 candles</li>
+                        <li><strong>Binance perp taker flow</strong> — historical API</li>
+                        <li><strong>OKX spot + perp taker</strong> — months of history</li>
+                    </ul>
+                </div>
+                
+                <div style="margin-bottom:20px">
+                    <h3 style="font-size:14px;color:#f0883e;margin-bottom:8px">⚠️ Recent Snapshot Only (no true historical)</h3>
+                    <ul style="margin:0;padding-left:20px;color:#c9d1d9;font-size:13px;line-height:1.8">
+                        <li><strong>Upbit</strong> — last 200 trades only</li>
+                        <li><strong>Bybit</strong> — last 200 trades</li>
+                        <li><strong>KuCoin</strong> — last ~50 trades</li>
+                        <li><strong>MEXC</strong> — last 200 trades</li>
+                        <li><strong>Bitget</strong> — last 200 trades</li>
+                    </ul>
+                </div>
+                
+                <div style="margin-bottom:20px">
+                    <h3 style="font-size:14px;color:#3fb950;margin-bottom:8px">🔄 Collector Running</h3>
+                    <p style="margin:0;color:#8b949e;font-size:13px;line-height:1.6">
+                        A background collector polls all 7 exchanges every 5 minutes and stores the data locally. 
+                        Over time, this builds complete historical coverage for all exchanges regardless of API limitations.
+                    </p>
+                </div>
+                
+                <div style="background:#0d1117;border-radius:8px;padding:12px;font-size:12px;color:#8b949e">
+                    <strong style="color:#c9d1d9">Note:</strong> For 14D/30D views, you'll see real historical from Binance + OKX immediately. 
+                    Other exchanges show aggregated data from the collector (improves over time).
+                </div>
+            </div>
+        </div>
+        
+        <!-- Top Stats -->
+        <div class="grid-6" style="margin-bottom: 16px;">
+            <div class="card" style="margin-bottom: 0;">
+                <div class="stat-label">Price</div>
+                <div class="stat-value" id="price">-</div>
+                <div class="stat-sub" id="price-change">-</div>
+            </div>
+            <div class="card" style="margin-bottom: 0;">
+                <div class="stat-label">Spot Net Flow (All CEX)</div>
+                <div class="stat-value" id="spot-flow">-</div>
+                <div class="stat-sub" id="spot-flow-sub">-</div>
+            </div>
+            <div class="card" style="margin-bottom: 0;">
+                <div class="stat-label">Perp Net Flow</div>
+                <div class="stat-value" id="perp-flow">-</div>
+                <div class="stat-sub" id="perp-flow-sub">-</div>
+            </div>
+            <div class="card" style="margin-bottom: 0;">
+                <div class="stat-label">Total OI</div>
+                <div class="stat-value" id="total-oi">-</div>
+                <div class="stat-sub" id="oi-sub">-</div>
+            </div>
+            <div class="card" style="margin-bottom: 0;">
+                <div class="stat-label">Avg Funding</div>
+                <div class="stat-value" id="avg-funding">-</div>
+                <div class="stat-sub" id="funding-sub">-</div>
+            </div>
+            <div class="card" style="margin-bottom: 0;">
+                <div class="stat-label">24h Volume</div>
+                <div class="stat-value" id="total-vol">-</div>
+                <div class="stat-sub" id="vol-sub">-</div>
+            </div>
+        </div>
+        
+        <!-- Spot Section First -->
+        <div class="grid-3">
+            <div class="card" style="grid-column: span 2;">
+                <div class="card-title">Spot Taker Flow by Exchange <span class="badge">7 Exchanges</span></div>
+                <div id="spot-flow-breakdown"></div>
+            </div>
+            <div class="card">
+                <div class="card-title">24h Volume by Exchange</div>
+                <div id="volumes"></div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-title">Spot Flow History <span class="badge">Binance</span></div>
+            <table>
+                <thead><tr><th>Time</th><th>Price</th><th>Volume</th><th>Buy/Sell</th><th>Net Flow</th></tr></thead>
+                <tbody id="spot-table"></tbody>
+            </table>
+        </div>
+        
+        <!-- Upbit (Korean Exchange) Section -->
+        <div class="card">
+            <div class="card-title">🇰🇷 Upbit Korea (KRW-BERA) <span class="badge" style="background:#f85149">Major CEX Flow</span></div>
+            <div class="grid-3" id="upbit-section">
+                <div>
+                    <div class="stat-label">Upbit 24h Volume</div>
+                    <div class="stat-value" id="upbit-vol">-</div>
+                    <div class="stat-sub" id="upbit-price">-</div>
+                </div>
+                <div>
+                    <div class="stat-label">Taker Flow (Recent)</div>
+                    <div class="stat-value" id="upbit-flow">-</div>
+                    <div class="stat-sub" id="upbit-flow-sub">Buy/Sell Ratio</div>
+                </div>
+                <div>
+                    <div class="stat-label">Orderbook Imbalance</div>
+                    <div class="stat-value" id="upbit-ob-ratio">-</div>
+                    <div class="stat-sub" id="upbit-ob-sub">Bid/Ask Size Ratio</div>
+                </div>
+            </div>
+            <div class="grid-2" style="margin-top:12px">
+                <div>
+                    <div style="font-size:10px;color:#8b949e;margin-bottom:6px">Bids (KRW)</div>
+                    <div id="upbit-bids"></div>
+                </div>
+                <div>
+                    <div style="font-size:10px;color:#8b949e;margin-bottom:6px">Asks (KRW)</div>
+                    <div id="upbit-asks"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="grid-2">
+            <div class="card">
+                <div class="card-title">Order Book Depth <span class="badge">Binance</span></div>
+                <div class="grid-2" id="depth"></div>
+            </div>
+            <div class="card">
+                <div class="card-title">Open Interest</div>
+                <div id="oi-breakdown"></div>
+            </div>
+        </div>
+        
+        <!-- Perps Section Below -->
+        <div class="grid-3">
+            <div class="card" style="grid-column: span 2;">
+                <div class="card-title">Perpetuals Taker Flow <span class="badge">Binance + OKX</span></div>
+                <table>
+                    <thead><tr><th>Time</th><th>Exchange</th><th>Taker Buy</th><th>Taker Sell</th><th>Net Flow</th><th>Ratio</th></tr></thead>
+                    <tbody id="perp-table"></tbody>
+                </table>
+            </div>
+            
+            <div>
+                <div class="card">
+                    <div class="card-title">Long/Short Positioning</div>
+                    <div id="ls-ratios"></div>
+                </div>
+                <div class="card">
+                    <div class="card-title">Funding Rates (per 8h)</div>
+                    <div id="funding-rates"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="last-updated" id="last-updated">-</div>
+    </div>
+    
+    <script>
+        let currentInterval = '1d';
+        let currentLimit = 7;
+        
+        // Map unified timeframe to interval + limit
+        const timeframeMap = {
+            '1h':  { interval: '1h', limit: 1 },
+            '4h':  { interval: '1h', limit: 4 },
+            '12h': { interval: '1h', limit: 12 },
+            '24h': { interval: '1h', limit: 24 },
+            '3d':  { interval: '1d', limit: 3 },
+            '5d':  { interval: '1d', limit: 5 },
+            '7d':  { interval: '1d', limit: 7 },
+            '14d': { interval: '1d', limit: 14 },
+            '30d': { interval: '1d', limit: 30 }
+        };
+        
+        const fmt = (v) => {
+            const a = Math.abs(v);
+            if (a >= 1e9) return (v/1e9).toFixed(2) + 'B';
+            if (a >= 1e6) return (v/1e6).toFixed(2) + 'M';
+            if (a >= 1e3) return (v/1e3).toFixed(1) + 'K';
+            return v.toFixed(0);
+        };
+        
+        const fmtTime = (ts, int) => {
+            const d = new Date(ts);
+            if (int === '1h' || int === '4h') return d.toLocaleString('en-US', {month:'short',day:'numeric',hour:'numeric'});
+            return d.toLocaleDateString('en-US', {month:'short',day:'numeric'});
+        };
+        
+        async function fetchData() {
+            document.getElementById('status').textContent = 'Loading...';
+            try {
+                const [data, depth] = await Promise.all([
+                    fetch(`/api/data?interval=${currentInterval}&limit=${currentLimit}`).then(r => r.json()),
+                    fetch('/api/depth').then(r => r.json())
+                ]);
+                render(data, depth);
+                document.getElementById('status').textContent = '';
+            } catch (e) {
+                document.getElementById('status').textContent = 'Error: ' + e.message;
+                console.error(e);
+            }
+        }
+        
+        function render(data, depth) {
+            // Price
+            document.getElementById('price').textContent = '$' + data.price.toFixed(4);
+            const pcEl = document.getElementById('price-change');
+            pcEl.textContent = (data.priceChange24h >= 0 ? '+' : '') + data.priceChange24h.toFixed(2) + '% 24h';
+            pcEl.className = 'stat-sub ' + (data.priceChange24h >= 0 ? 'positive' : 'negative');
+            
+            // Perp flow
+            const perpNet = data.perpFlow.reduce((s, f) => s + f.netFlow, 0);
+            const pfEl = document.getElementById('perp-flow');
+            pfEl.textContent = (perpNet >= 0 ? '+$' : '-$') + fmt(Math.abs(perpNet));
+            pfEl.className = 'stat-value ' + (perpNet >= 0 ? 'positive' : 'negative');
+            document.getElementById('perp-flow-sub').textContent = data.perpFlow.length + ' periods';
+            
+            // Spot flow (aggregated across exchanges)
+            const spotNet = data.spotFlowTotal ? data.spotFlowTotal.total : data.spotKlines.reduce((s, k) => s + k.netFlow, 0);
+            const sfEl = document.getElementById('spot-flow');
+            sfEl.textContent = (spotNet >= 0 ? '+$' : '-$') + fmt(Math.abs(spotNet));
+            sfEl.className = 'stat-value ' + (spotNet >= 0 ? 'positive' : 'negative');
+            
+            // Show top 3 contributors in subtitle
+            const sf = data.spotFlowTotal?.exchanges;
+            if (sf) {
+                const sorted = Object.entries(sf).sort((a,b) => Math.abs(b[1].net) - Math.abs(a[1].net)).slice(0,3);
+                const spotBreakdown = sorted.map(([ex, d]) => `${ex}: ${d.net >= 0 ? '+' : ''}${fmt(d.net)}`).join(' | ');
+                document.getElementById('spot-flow-sub').textContent = spotBreakdown;
+                
+                // Render detailed breakdown
+                const allSorted = Object.entries(sf).sort((a,b) => Math.abs(b[1].net) - Math.abs(a[1].net));
+                const maxNet = Math.max(...allSorted.map(([,d]) => Math.abs(d.net)));
+                document.getElementById('spot-flow-breakdown').innerHTML = allSorted.map(([ex, d]) => {
+                    const pct = Math.abs(d.net) / maxNet * 100;
+                    const isPos = d.net >= 0;
+                    return `
+                        <div class="metric-row" style="align-items:center">
+                            <span style="width:70px">${ex}</span>
+                            <div style="flex:1;display:flex;align-items:center;gap:8px">
+                                <div style="width:${pct}%;min-width:2px;height:12px;background:${isPos ? 'rgba(63,185,80,0.6)' : 'rgba(248,81,73,0.6)'};border-radius:2px"></div>
+                                <span class="${isPos ? 'positive' : 'negative'}" style="font-family:monospace;font-size:12px">${isPos ? '+' : ''}$${fmt(Math.abs(d.net))}</span>
+                            </div>
+                            <span style="font-size:9px;color:#8b949e;width:80px;text-align:right">${d.source || ''}</span>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                document.getElementById('spot-flow-sub').textContent = data.spotKlines.length + ' periods';
+            }
+            
+            // OI
+            const totalOI = Object.values(data.openInterest).reduce((s, v) => s + v, 0);
+            document.getElementById('total-oi').textContent = '$' + fmt(totalOI);
+            document.getElementById('oi-sub').textContent = Object.keys(data.openInterest).filter(k => data.openInterest[k] > 0).length + ' exchanges';
+            
+            // Funding
+            const fundingVals = Object.values(data.funding).filter(v => v !== 0);
+            const avgFunding = fundingVals.length ? fundingVals.reduce((s, v) => s + v, 0) / fundingVals.length : 0;
+            const afEl = document.getElementById('avg-funding');
+            afEl.textContent = (avgFunding >= 0 ? '+' : '') + avgFunding.toFixed(4) + '%';
+            afEl.className = 'stat-value ' + (avgFunding >= 0 ? 'positive' : 'negative');
+            document.getElementById('funding-sub').textContent = avgFunding < 0 ? 'Shorts pay longs' : 'Longs pay shorts';
+            
+            // Volume
+            const spotVol = data.volumes.filter(v => v.type === 'spot').reduce((s, v) => s + v.volume, 0);
+            const perpVol = data.volumes.filter(v => v.type === 'perp').reduce((s, v) => s + v.volume, 0);
+            document.getElementById('total-vol').textContent = '$' + fmt(spotVol + perpVol);
+            document.getElementById('vol-sub').textContent = `S: $${fmt(spotVol)} P: $${fmt(perpVol)}`;
+            
+            // Perp flow table
+            document.getElementById('perp-table').innerHTML = data.perpFlow.slice(0, 20).map(f => `
+                <tr>
+                    <td>${fmtTime(f.time, currentInterval)}</td>
+                    <td>${f.exchange}</td>
+                    <td class="positive">$${fmt(f.buyVol)}</td>
+                    <td class="negative">$${fmt(f.sellVol)}</td>
+                    <td class="${f.netFlow >= 0 ? 'positive' : 'negative'}">${f.netFlow >= 0 ? '+' : '-'}$${fmt(Math.abs(f.netFlow))}</td>
+                    <td class="${f.ratio >= 1 ? 'positive' : 'negative'}">${f.ratio.toFixed(3)}</td>
+                </tr>
+            `).join('');
+            
+            // L/S
+            document.getElementById('ls-ratios').innerHTML = Object.entries(data.longShort)
+                .filter(([k, v]) => v)
+                .map(([k, v]) => `
+                    <div class="metric-row">
+                        <span>${k}</span>
+                        <span><span class="positive">${v.long.toFixed(1)}%</span> / <span class="negative">${v.short.toFixed(1)}%</span></span>
+                    </div>
+                `).join('');
+            
+            // Funding
+            document.getElementById('funding-rates').innerHTML = Object.entries(data.funding)
+                .filter(([k, v]) => v !== 0)
+                .map(([k, v]) => `
+                    <div class="metric-row">
+                        <span><span class="funding-dot" style="background:${v < 0 ? '#f85149' : '#3fb950'}"></span>${k}</span>
+                        <span class="${v < 0 ? 'negative' : 'positive'}">${v >= 0 ? '+' : ''}${v.toFixed(4)}%</span>
+                    </div>
+                `).join('');
+            
+            // OI breakdown
+            document.getElementById('oi-breakdown').innerHTML = Object.entries(data.openInterest)
+                .filter(([k, v]) => v > 0)
+                .sort((a, b) => b[1] - a[1])
+                .map(([k, v]) => `
+                    <div class="metric-row">
+                        <span>${k}</span>
+                        <span>$${fmt(v)}</span>
+                    </div>
+                `).join('');
+            
+            // Volumes
+            const exchanges = [...new Set(data.volumes.map(v => v.exchange))];
+            document.getElementById('volumes').innerHTML = exchanges.map(ex => {
+                const spot = data.volumes.find(v => v.exchange === ex && v.type === 'spot');
+                const perp = data.volumes.find(v => v.exchange === ex && v.type === 'perp');
+                return `
+                    <div class="metric-row">
+                        <span>${ex}</span>
+                        <span>
+                            ${spot ? `<span class="vol-type spot">S</span>$${fmt(spot.volume)}` : ''}
+                            ${spot && perp ? ' ' : ''}
+                            ${perp ? `<span class="vol-type perp">P</span>$${fmt(perp.volume)}` : ''}
+                        </span>
+                    </div>
+                `;
+            }).join('');
+            
+            // Depth
+            if (depth) {
+                const maxUsd = Math.max(...depth.bids.map(b => b.usd), ...depth.asks.map(a => a.usd));
+                document.getElementById('depth').innerHTML = `
+                    <div>
+                        <div style="font-size:10px;color:#8b949e;margin-bottom:6px">Bids (Support)</div>
+                        ${depth.bids.map(b => `
+                            <div style="display:flex;align-items:center;margin-bottom:3px;font-size:11px">
+                                <div style="width:${b.usd/maxUsd*100}%;background:rgba(63,185,80,0.3);padding:2px 4px;border-radius:2px">$${b.price.toFixed(4)}</div>
+                                <span style="margin-left:6px;color:#8b949e">$${fmt(b.usd)}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div>
+                        <div style="font-size:10px;color:#8b949e;margin-bottom:6px">Asks (Resistance)</div>
+                        ${depth.asks.map(a => `
+                            <div style="display:flex;align-items:center;margin-bottom:3px;font-size:11px">
+                                <div style="width:${a.usd/maxUsd*100}%;background:rgba(248,81,73,0.3);padding:2px 4px;border-radius:2px">$${a.price.toFixed(4)}</div>
+                                <span style="margin-left:6px;color:#8b949e">$${fmt(a.usd)}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+            
+            // Upbit section
+            if (data.upbit) {
+                const u = data.upbit;
+                document.getElementById('upbit-vol').textContent = '$' + fmt(u.volume24h);
+                document.getElementById('upbit-price').textContent = `₩${u.priceKRW?.toLocaleString()} (~$${u.price?.toFixed(4)}) ${u.change24h >= 0 ? '+' : ''}${u.change24h?.toFixed(2)}%`;
+                
+                const flowEl = document.getElementById('upbit-flow');
+                flowEl.textContent = (u.netFlow >= 0 ? '+$' : '-$') + fmt(Math.abs(u.netFlow));
+                flowEl.className = 'stat-value ' + (u.netFlow >= 0 ? 'positive' : 'negative');
+                document.getElementById('upbit-flow-sub').innerHTML = `<span class="positive">Buy $${fmt(u.takerBuyVol)}</span> / <span class="negative">Sell $${fmt(u.takerSellVol)}</span> (${u.flowRatio.toFixed(2)})`;
+                
+                const obEl = document.getElementById('upbit-ob-ratio');
+                obEl.textContent = u.orderbook?.bidAskRatio?.toFixed(2) || '-';
+                obEl.className = 'stat-value ' + (u.orderbook?.bidAskRatio >= 1 ? 'positive' : 'negative');
+                document.getElementById('upbit-ob-sub').textContent = `Bids: ${fmt(u.orderbook?.totalBidSize || 0)} / Asks: ${fmt(u.orderbook?.totalAskSize || 0)}`;
+                
+                if (u.orderbook?.top5) {
+                    const maxSize = Math.max(...u.orderbook.top5.map(l => Math.max(l.bidSize, l.askSize)));
+                    document.getElementById('upbit-bids').innerHTML = u.orderbook.top5.map(l => `
+                        <div style="display:flex;align-items:center;margin-bottom:3px;font-size:11px">
+                            <div style="width:${l.bidSize/maxSize*100}%;background:rgba(63,185,80,0.3);padding:2px 4px;border-radius:2px">₩${l.bidPrice}</div>
+                            <span style="margin-left:6px;color:#8b949e">${fmt(l.bidSize)}</span>
+                        </div>
+                    `).join('');
+                    document.getElementById('upbit-asks').innerHTML = u.orderbook.top5.map(l => `
+                        <div style="display:flex;align-items:center;margin-bottom:3px;font-size:11px">
+                            <div style="width:${l.askSize/maxSize*100}%;background:rgba(248,81,73,0.3);padding:2px 4px;border-radius:2px">₩${l.askPrice}</div>
+                            <span style="margin-left:6px;color:#8b949e">${fmt(l.askSize)}</span>
+                        </div>
+                    `).join('');
+                }
+            }
+            
+            // Spot table
+            document.getElementById('spot-table').innerHTML = data.spotKlines.slice().reverse().map(k => {
+                const buyPct = (k.takerBuyQuote / k.quoteVolume) * 100;
+                return `
+                    <tr>
+                        <td>${fmtTime(k.time, currentInterval)}</td>
+                        <td>$${k.close.toFixed(4)}</td>
+                        <td>$${fmt(k.quoteVolume)}</td>
+                        <td>
+                            <div class="flow-bar" style="width:80px">
+                                <div class="flow-bar-buy" style="width:${buyPct}%"></div>
+                                <div class="flow-bar-sell" style="width:${100-buyPct}%"></div>
+                            </div>
+                        </td>
+                        <td class="${k.netFlow >= 0 ? 'positive' : 'negative'}">${k.netFlow >= 0 ? '+' : '-'}$${fmt(Math.abs(k.netFlow))}</td>
+                    </tr>
+                `;
+            }).join('');
+            
+            document.getElementById('last-updated').textContent = 'Last updated: ' + new Date().toLocaleString();
+        }
+        
+        document.querySelectorAll('.time-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                const tf = timeframeMap[btn.dataset.tf];
+                if (tf) {
+                    currentInterval = tf.interval;
+                    currentLimit = tf.limit;
+                    fetchData();
+                }
+            });
+        });
+        
+        document.getElementById('refresh').addEventListener('click', fetchData);
+        
+        // Info modal
+        document.getElementById('info-btn').addEventListener('click', () => {
+            document.getElementById('info-modal').style.display = 'block';
+        });
+        document.getElementById('close-info').addEventListener('click', () => {
+            document.getElementById('info-modal').style.display = 'none';
+        });
+        document.getElementById('info-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'info-modal') {
+                document.getElementById('info-modal').style.display = 'none';
+            }
+        });
+        
+        fetchData();
+        setInterval(fetchData, 30000);
+    </script>
+</body>
+</html>

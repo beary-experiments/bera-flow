@@ -166,7 +166,7 @@
         </div>
         
         <div class="card">
-            <div class="card-title">Spot Flow History <span class="badge">Binance</span></div>
+            <div class="card-title">Spot Flow History <span class="badge" id="spot-history-badge">Binance</span></div>
             <table>
                 <thead><tr><th>Time</th><th>Price</th><th>Volume</th><th>Buy/Sell</th><th>Net Flow</th></tr></thead>
                 <tbody id="spot-table"></tbody>
@@ -511,7 +511,9 @@
                 }
             }
             
-            // Spot table
+            // Spot table - update badge to show data source
+            const spotSource = data.spotKlines[0]?.exchange || 'Binance';
+            document.getElementById('spot-history-badge').textContent = spotSource;
             document.getElementById('spot-table').innerHTML = data.spotKlines.slice().reverse().map(k => {
                 const buyPct = (k.takerBuyQuote / k.quoteVolume) * 100;
                 return `

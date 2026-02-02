@@ -413,20 +413,22 @@ async function getAllData(interval = '1d', limit = 7) {
       }))
     ].sort((a, b) => b.time - a.time),
     
-    // Aggregated perp flow across all exchanges with detailed breakdown
+    // Aggregated perp flow across all exchanges with detailed breakdown (historical totals)
     perpFlowTotal: {
       exchanges: {
         Binance: { 
-          net: (Array.isArray(binanceTakerFlow) && binanceTakerFlow[0]) ? +binanceTakerFlow[0].buyVol - +binanceTakerFlow[0].sellVol : 0,
-          buy: (Array.isArray(binanceTakerFlow) && binanceTakerFlow[0]) ? +binanceTakerFlow[0].buyVol : 0,
-          sell: (Array.isArray(binanceTakerFlow) && binanceTakerFlow[0]) ? +binanceTakerFlow[0].sellVol : 0,
-          source: 'taker API (5m)'
+          net: (Array.isArray(binanceTakerFlow) ? binanceTakerFlow : []).reduce((sum, d) => sum + (+d.buyVol - +d.sellVol), 0),
+          buy: (Array.isArray(binanceTakerFlow) ? binanceTakerFlow : []).reduce((sum, d) => sum + +d.buyVol, 0),
+          sell: (Array.isArray(binanceTakerFlow) ? binanceTakerFlow : []).reduce((sum, d) => sum + +d.sellVol, 0),
+          periods: (Array.isArray(binanceTakerFlow) ? binanceTakerFlow : []).length,
+          source: 'historical (all periods)'
         },
         OKX: { 
-          net: okxTakerVol?.data?.[0] ? +okxTakerVol.data[0][2] - +okxTakerVol.data[0][1] : 0,
-          buy: okxTakerVol?.data?.[0] ? +okxTakerVol.data[0][2] : 0,
-          sell: okxTakerVol?.data?.[0] ? +okxTakerVol.data[0][1] : 0,
-          source: 'taker API'
+          net: (okxTakerVol?.data || []).reduce((sum, d) => sum + (+d[2] - +d[1]), 0),
+          buy: (okxTakerVol?.data || []).reduce((sum, d) => sum + +d[2], 0),
+          sell: (okxTakerVol?.data || []).reduce((sum, d) => sum + +d[1], 0),
+          periods: (okxTakerVol?.data || []).length,
+          source: 'historical (all periods)'
         },
         Bybit: { 
           net: bybitPerpFlow.buyVol - bybitPerpFlow.sellVol, 

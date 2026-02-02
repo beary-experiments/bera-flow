@@ -290,7 +290,7 @@ async function getAllData(interval = '1d', limit = 7) {
     priceChange24h: binanceSpotTicker?.priceChangePercent ? +binanceSpotTicker.priceChangePercent : 0,
     
     // Spot klines for flow calculation
-    spotKlines: (binanceSpotKlines || []).map(k => ({
+    spotKlines: (Array.isArray(binanceSpotKlines) ? binanceSpotKlines : []).map(k => ({
       time: k[0],
       exchange: 'Binance',
       open: +k[1], high: +k[2], low: +k[3], close: +k[4],
@@ -302,7 +302,7 @@ async function getAllData(interval = '1d', limit = 7) {
     // Aggregated spot flow across all exchanges with detailed breakdown
     spotFlowTotal: {
       exchanges: {
-        Binance: { net: (binanceSpotKlines || []).reduce((sum, k) => sum + ((2 * +k[10]) - +k[7]), 0), source: '7d klines' },
+        Binance: { net: (Array.isArray(binanceSpotKlines) ? binanceSpotKlines : []).reduce((sum, k) => sum + ((2 * +k[10]) - +k[7]), 0), source: '7d klines' },
         OKX: { net: okxSpotFlow.buyVol - okxSpotFlow.sellVol, buy: okxSpotFlow.buyVol, sell: okxSpotFlow.sellVol, source: '24h taker API' },
         Upbit: { net: upbitTakerFlow.buyVol - upbitTakerFlow.sellVol, buy: upbitTakerFlow.buyVol, sell: upbitTakerFlow.sellVol, source: 'recent trades' },
         Bybit: { net: bybitSpotFlow.buyVol - bybitSpotFlow.sellVol, buy: bybitSpotFlow.buyVol, sell: bybitSpotFlow.sellVol, source: 'recent trades' },
@@ -317,16 +317,16 @@ async function getAllData(interval = '1d', limit = 7) {
     
     // Perp taker flow
     perpFlow: [
-      ...(binanceTakerFlow || []).map(d => ({
+      ...(Array.isArray(binanceTakerFlow) ? binanceTakerFlow : []).map(d => ({
         exchange: 'Binance', time: d.timestamp,
         buyVol: +d.buyVol, sellVol: +d.sellVol,
         netFlow: +d.buyVol - +d.sellVol, ratio: +d.buySellRatio
       })),
-      ...((okxTakerVol?.data || []).map(d => ({
+      ...(Array.isArray(okxTakerVol?.data) ? okxTakerVol.data : []).map(d => ({
         exchange: 'OKX', time: +d[0],
         sellVol: +d[1], buyVol: +d[2],
         netFlow: +d[2] - +d[1], ratio: +d[2] / +d[1]
-      })))
+      }))
     ].sort((a, b) => b.time - a.time),
     
     // Volumes

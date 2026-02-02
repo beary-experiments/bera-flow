@@ -446,7 +446,7 @@
             }).join('');
             
             // Depth
-            if (depth) {
+            if (depth && depth.bids && depth.asks && depth.bids.length && depth.asks.length) {
                 const maxUsd = Math.max(...depth.bids.map(b => b.usd), ...depth.asks.map(a => a.usd));
                 document.getElementById('depth').innerHTML = `
                     <div>

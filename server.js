@@ -515,11 +515,11 @@ async function getDepth() {
   const depth = await cachedFetch('binance-depth', () => 
     fetchJSON('https://api.binance.com/api/v3/depth?symbol=BERAUSDT&limit=10'));
   
-  if (!depth) return null;
+  if (!depth || !depth.bids || !depth.asks) return null;
   
   return {
-    bids: depth.bids.slice(0, 5).map(b => ({ price: +b[0], qty: +b[1], usd: +b[0] * +b[1] })),
-    asks: depth.asks.slice(0, 5).map(a => ({ price: +a[0], qty: +a[1], usd: +a[0] * +a[1] }))
+    bids: (depth.bids || []).slice(0, 5).map(b => ({ price: +b[0], qty: +b[1], usd: +b[0] * +b[1] })),
+    asks: (depth.asks || []).slice(0, 5).map(a => ({ price: +a[0], qty: +a[1], usd: +a[0] * +a[1] }))
   };
 }
 

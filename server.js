@@ -399,78 +399,92 @@ async function getAllData(interval = '1d', limit = 7) {
       }
     },
     
-    // Get Binance time range to align OKX data
-    const binanceData = Array.isArray(binanceTakerFlow) ? binanceTakerFlow : [];
-    const binanceMinTime = binanceData.length ? Math.min(...binanceData.map(d => d.timestamp)) : 0;
-    const binanceMaxTime = binanceData.length ? Math.max(...binanceData.map(d => d.timestamp)) : Date.now();
-    
-    // Filter OKX data to match Binance time range (for fair comparison)
-    const okxDataRaw = okxTakerVol?.data || [];
-    const okxDataFiltered = okxDataRaw.filter(d => {
-      const ts = +d[0];
-      return ts >= binanceMinTime && ts <= binanceMaxTime;
-    });
-    
     // Perp taker flow (historical time series from Binance/OKX APIs - aligned time range)
-    perpFlow: [
-      ...binanceData.map(d => ({
-        exchange: 'Binance', time: d.timestamp,
-        buyVol: +d.buyVol, sellVol: +d.sellVol,
-        netFlow: +d.buyVol - +d.sellVol, ratio: +d.buySellRatio
-      })),
-      ...okxDataFiltered.map(d => ({
-        exchange: 'OKX', time: +d[0],
-        sellVol: +d[1], buyVol: +d[2],
-        netFlow: +d[2] - +d[1], ratio: +d[2] / +d[1]
-      }))
-    ].sort((a, b) => b.time - a.time),
+    perpFlow: (() => {
+      // Get Binance time range to align OKX data
+      const binanceData = Array.isArray(binanceTakerFlow) ? binanceTakerFlow : [];
+      const binanceMinTime = binanceData.length ? Math.min(...binanceData.map(d => d.timestamp)) : 0;
+      const binanceMaxTime = binanceData.length ? Math.max(...binanceData.map(d => d.timestamp)) : Date.now();
+      
+      // Filter OKX data to match Binance time range
+      const okxDataFiltered = (okxTakerVol?.data || []).filter(d => {
+        const ts = +d[0];
+        return ts >= binanceMinTime && ts <= binanceMaxTime;
+      });
+      
+      return [
+        ...binanceData.map(d => ({
+          exchange: 'Binance', time: d.timestamp,
+          buyVol: +d.buyVol, sellVol: +d.sellVol,
+          netFlow: +d.buyVol - +d.sellVol, ratio: +d.buySellRatio
+        })),
+        ...okxDataFiltered.map(d => ({
+          exchange: 'OKX', time: +d[0],
+          sellVol: +d[1], buyVol: +d[2],
+          netFlow: +d[2] - +d[1], ratio: +d[2] / +d[1]
+        }))
+      ].sort((a, b) => b.time - a.time);
+    })(),
     
     // Aggregated perp flow across all exchanges with detailed breakdown (historical totals - aligned periods)
-    perpFlowTotal: {
-      exchanges: {
-        Binance: { 
-          net: binanceData.reduce((sum, d) => sum + (+d.buyVol - +d.sellVol), 0),
-          buy: binanceData.reduce((sum, d) => sum + +d.buyVol, 0),
-          sell: binanceData.reduce((sum, d) => sum + +d.sellVol, 0),
-          periods: binanceData.length,
-          source: 'historical (aligned)'
+    perpFlowTotal: (() => {
+      // Get Binance time range to align OKX data
+      const binanceData = Array.isArray(binanceTakerFlow) ? binanceTakerFlow : [];
+      const binanceMinTime = binanceData.length ? Math.min(...binanceData.map(d => d.timestamp)) : 0;
+      const binanceMaxTime = binanceData.length ? Math.max(...binanceData.map(d => d.timestamp)) : Date.now();
+      
+      // Filter OKX data to match Binance time range
+      const okxDataFiltered = (okxTakerVol?.data || []).filter(d => {
+        const ts = +d[0];
+        return ts >= binanceMinTime && ts <= binanceMaxTime;
+      });
+      
+      return {
+        exchanges: {
+          Binance: { 
+            net: binanceData.reduce((sum, d) => sum + (+d.buyVol - +d.sellVol), 0),
+            buy: binanceData.reduce((sum, d) => sum + +d.buyVol, 0),
+            sell: binanceData.reduce((sum, d) => sum + +d.sellVol, 0),
+            periods: binanceData.length,
+            source: 'historical (aligned)'
+          },
+          OKX: { 
+            net: okxDataFiltered.reduce((sum, d) => sum + (+d[2] - +d[1]), 0),
+            buy: okxDataFiltered.reduce((sum, d) => sum + +d[2], 0),
+            sell: okxDataFiltered.reduce((sum, d) => sum + +d[1], 0),
+            periods: okxDataFiltered.length,
+            source: 'historical (aligned)'
+          },
+          Bybit: { 
+            net: bybitPerpFlow.buyVol - bybitPerpFlow.sellVol, 
+            buy: bybitPerpFlow.buyVol, 
+            sell: bybitPerpFlow.sellVol, 
+            source: 'recent trades' 
+          },
+          MEXC: { 
+            net: mexcPerpFlow.buyVol - mexcPerpFlow.sellVol, 
+            buy: mexcPerpFlow.buyVol, 
+            sell: mexcPerpFlow.sellVol, 
+            source: 'recent trades' 
+          },
+          Bitget: { 
+            net: bitgetPerpFlow.buyVol - bitgetPerpFlow.sellVol, 
+            buy: bitgetPerpFlow.buyVol, 
+            sell: bitgetPerpFlow.sellVol, 
+            source: 'recent trades' 
+          },
+          BingX: { 
+            net: bingxPerpFlow.buyVol - bingxPerpFlow.sellVol, 
+            buy: bingxPerpFlow.buyVol, 
+            sell: bingxPerpFlow.sellVol, 
+            source: 'recent trades' 
+          }
         },
-        OKX: { 
-          net: okxDataFiltered.reduce((sum, d) => sum + (+d[2] - +d[1]), 0),
-          buy: okxDataFiltered.reduce((sum, d) => sum + +d[2], 0),
-          sell: okxDataFiltered.reduce((sum, d) => sum + +d[1], 0),
-          periods: okxDataFiltered.length,
-          source: 'historical (aligned)'
-        },
-        Bybit: { 
-          net: bybitPerpFlow.buyVol - bybitPerpFlow.sellVol, 
-          buy: bybitPerpFlow.buyVol, 
-          sell: bybitPerpFlow.sellVol, 
-          source: 'recent trades' 
-        },
-        MEXC: { 
-          net: mexcPerpFlow.buyVol - mexcPerpFlow.sellVol, 
-          buy: mexcPerpFlow.buyVol, 
-          sell: mexcPerpFlow.sellVol, 
-          source: 'recent trades' 
-        },
-        Bitget: { 
-          net: bitgetPerpFlow.buyVol - bitgetPerpFlow.sellVol, 
-          buy: bitgetPerpFlow.buyVol, 
-          sell: bitgetPerpFlow.sellVol, 
-          source: 'recent trades' 
-        },
-        BingX: { 
-          net: bingxPerpFlow.buyVol - bingxPerpFlow.sellVol, 
-          buy: bingxPerpFlow.buyVol, 
-          sell: bingxPerpFlow.sellVol, 
-          source: 'recent trades' 
+        get total() { 
+          return Object.values(this.exchanges).reduce((sum, ex) => sum + ex.net, 0);
         }
-      },
-      get total() { 
-        return Object.values(this.exchanges).reduce((sum, ex) => sum + ex.net, 0);
-      }
-    },
+      };
+    })(),
     
     // Volumes
     volumes: [

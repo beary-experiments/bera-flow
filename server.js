@@ -90,18 +90,22 @@ async function getAllData(interval = '1d', limit = 7) {
     bybitOI,
     bybitFunding,
     bybitLS,
+    bybitPerpTrades,
     // KuCoin
     kucoinSpot,
     // MEXC
     mexcSpot,
     mexcPerp,
     mexcFunding,
+    mexcPerpTrades,
     // Bitget
     bitgetSpot,
     bitgetOI,
+    bitgetPerpTrades,
     // BingX
     bingxPerp,
     bingxOI,
+    bingxPerpTrades,
     // Hyperliquid
     hyperliquidMeta,
     // Upbit
@@ -154,6 +158,8 @@ async function getAllData(interval = '1d', limit = 7) {
       fetchJSON('https://api.bybit.com/v5/market/funding/history?category=linear&symbol=BERAUSDT&limit=1')),
     cachedFetch('bybit-ls', () => 
       fetchJSON('https://api.bybit.com/v5/market/account-ratio?category=linear&symbol=BERAUSDT&period=1d&limit=1')),
+    cachedFetch('bybit-perp-trades', () =>
+      fetchJSON('https://api.bybit.com/v5/market/recent-trade?category=linear&symbol=BERAUSDT&limit=500')),
     // KuCoin
     cachedFetch('kucoin-spot', () => 
       fetchJSON('https://api.kucoin.com/api/v1/market/stats?symbol=BERA-USDT')),
@@ -164,16 +170,22 @@ async function getAllData(interval = '1d', limit = 7) {
       fetchJSON('https://contract.mexc.com/api/v1/contract/ticker?symbol=BERA_USDT')),
     cachedFetch('mexc-funding', () => 
       fetchJSON('https://contract.mexc.com/api/v1/contract/funding_rate/BERA_USDT')),
+    cachedFetch('mexc-perp-trades', () =>
+      fetchJSON('https://contract.mexc.com/api/v1/contract/deals/BERA_USDT?limit=500')),
     // Bitget
     cachedFetch('bitget-spot', () => 
       fetchJSON('https://api.bitget.com/api/v2/spot/market/tickers?symbol=BERAUSDT')),
     cachedFetch('bitget-oi', () => 
       fetchJSON('https://api.bitget.com/api/v2/mix/market/open-interest?symbol=BERAUSDT&productType=USDT-FUTURES')),
+    cachedFetch('bitget-perp-trades', () =>
+      fetchJSON('https://api.bitget.com/api/v2/mix/market/fills?symbol=BERAUSDT&productType=USDT-FUTURES&limit=500')),
     // BingX
     cachedFetch('bingx-perp', () => 
       fetchJSON('https://open-api.bingx.com/openApi/swap/v2/quote/ticker?symbol=BERA-USDT')),
     cachedFetch('bingx-oi', () => 
       fetchJSON('https://open-api.bingx.com/openApi/swap/v2/quote/openInterest?symbol=BERA-USDT')),
+    cachedFetch('bingx-perp-trades', () =>
+      fetchJSON('https://open-api.bingx.com/openApi/swap/v2/quote/trades?symbol=BERA-USDT&limit=500')),
     // Hyperliquid
     cachedFetch('hyperliquid-meta', () => 
       postJSON('https://api.hyperliquid.xyz/info', { type: 'allMids' })),
@@ -284,6 +296,60 @@ async function getAllData(interval = '1d', limit = 7) {
     }
   }
 
+  // === PERP TAKER FLOW FROM RECENT TRADES ===
+  
+  // Bybit perp taker flow
+  const bybitPerpFlow = { buyVol: 0, sellVol: 0 };
+  if (bybitPerpTrades?.result?.list) {
+    for (const trade of bybitPerpTrades.result.list) {
+      const usdVol = +trade.price * +trade.size;
+      if (trade.side === 'Buy') {
+        bybitPerpFlow.buyVol += usdVol;
+      } else {
+        bybitPerpFlow.sellVol += usdVol;
+      }
+    }
+  }
+  
+  // MEXC perp taker flow (T: 1=buy, 2=sell)
+  const mexcPerpFlow = { buyVol: 0, sellVol: 0 };
+  if (mexcPerpTrades?.data && Array.isArray(mexcPerpTrades.data)) {
+    for (const trade of mexcPerpTrades.data) {
+      const usdVol = +trade.p * +trade.v;
+      if (trade.T === 1) {
+        mexcPerpFlow.buyVol += usdVol;
+      } else {
+        mexcPerpFlow.sellVol += usdVol;
+      }
+    }
+  }
+  
+  // Bitget perp taker flow
+  const bitgetPerpFlow = { buyVol: 0, sellVol: 0 };
+  if (bitgetPerpTrades?.data && Array.isArray(bitgetPerpTrades.data)) {
+    for (const trade of bitgetPerpTrades.data) {
+      const usdVol = +trade.price * +trade.size;
+      if (trade.side === 'buy') {
+        bitgetPerpFlow.buyVol += usdVol;
+      } else {
+        bitgetPerpFlow.sellVol += usdVol;
+      }
+    }
+  }
+  
+  // BingX perp taker flow (isBuyerMaker: true = taker sold, false = taker bought)
+  const bingxPerpFlow = { buyVol: 0, sellVol: 0 };
+  if (bingxPerpTrades?.data && Array.isArray(bingxPerpTrades.data)) {
+    for (const trade of bingxPerpTrades.data) {
+      const usdVol = +trade.quoteQty;
+      if (trade.isBuyerMaker) {
+        bingxPerpFlow.sellVol += usdVol;
+      } else {
+        bingxPerpFlow.buyVol += usdVol;
+      }
+    }
+  }
+
   // Process data
   const result = {
     price: currentPrice,
@@ -315,7 +381,7 @@ async function getAllData(interval = '1d', limit = 7) {
       }
     },
     
-    // Perp taker flow
+    // Perp taker flow (historical time series from Binance/OKX APIs)
     perpFlow: [
       ...(Array.isArray(binanceTakerFlow) ? binanceTakerFlow : []).map(d => ({
         exchange: 'Binance', time: d.timestamp,
@@ -328,6 +394,51 @@ async function getAllData(interval = '1d', limit = 7) {
         netFlow: +d[2] - +d[1], ratio: +d[2] / +d[1]
       }))
     ].sort((a, b) => b.time - a.time),
+    
+    // Aggregated perp flow across all exchanges with detailed breakdown
+    perpFlowTotal: {
+      exchanges: {
+        Binance: { 
+          net: (Array.isArray(binanceTakerFlow) && binanceTakerFlow[0]) ? +binanceTakerFlow[0].buyVol - +binanceTakerFlow[0].sellVol : 0,
+          buy: (Array.isArray(binanceTakerFlow) && binanceTakerFlow[0]) ? +binanceTakerFlow[0].buyVol : 0,
+          sell: (Array.isArray(binanceTakerFlow) && binanceTakerFlow[0]) ? +binanceTakerFlow[0].sellVol : 0,
+          source: 'taker API (5m)'
+        },
+        OKX: { 
+          net: okxTakerVol?.data?.[0] ? +okxTakerVol.data[0][2] - +okxTakerVol.data[0][1] : 0,
+          buy: okxTakerVol?.data?.[0] ? +okxTakerVol.data[0][2] : 0,
+          sell: okxTakerVol?.data?.[0] ? +okxTakerVol.data[0][1] : 0,
+          source: 'taker API'
+        },
+        Bybit: { 
+          net: bybitPerpFlow.buyVol - bybitPerpFlow.sellVol, 
+          buy: bybitPerpFlow.buyVol, 
+          sell: bybitPerpFlow.sellVol, 
+          source: 'recent trades' 
+        },
+        MEXC: { 
+          net: mexcPerpFlow.buyVol - mexcPerpFlow.sellVol, 
+          buy: mexcPerpFlow.buyVol, 
+          sell: mexcPerpFlow.sellVol, 
+          source: 'recent trades' 
+        },
+        Bitget: { 
+          net: bitgetPerpFlow.buyVol - bitgetPerpFlow.sellVol, 
+          buy: bitgetPerpFlow.buyVol, 
+          sell: bitgetPerpFlow.sellVol, 
+          source: 'recent trades' 
+        },
+        BingX: { 
+          net: bingxPerpFlow.buyVol - bingxPerpFlow.sellVol, 
+          buy: bingxPerpFlow.buyVol, 
+          sell: bingxPerpFlow.sellVol, 
+          source: 'recent trades' 
+        }
+      },
+      get total() { 
+        return Object.values(this.exchanges).reduce((sum, ex) => sum + ex.net, 0);
+      }
+    },
     
     // Volumes
     volumes: [

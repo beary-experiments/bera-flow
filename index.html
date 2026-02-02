@@ -219,7 +219,9 @@
         <!-- Perps Section Below -->
         <div class="grid-3">
             <div class="card" style="grid-column: span 2;">
-                <div class="card-title">Perpetuals Taker Flow <span class="badge">Binance + OKX</span></div>
+                <div class="card-title">Perpetuals Taker Flow <span class="badge">6 Exchanges</span></div>
+                <div id="perp-flow-breakdown" style="margin-bottom: 16px;"></div>
+                <div class="card-title" style="font-size: 12px; margin-top: 12px;">Historical (Binance + OKX)</div>
                 <table>
                     <thead><tr><th>Time</th><th>Exchange</th><th>Taker Buy</th><th>Taker Sell</th><th>Net Flow</th><th>Ratio</th></tr></thead>
                     <tbody id="perp-table"></tbody>
@@ -294,12 +296,21 @@
             pcEl.textContent = (data.priceChange24h >= 0 ? '+' : '') + data.priceChange24h.toFixed(2) + '% 24h';
             pcEl.className = 'stat-sub ' + (data.priceChange24h >= 0 ? 'positive' : 'negative');
             
-            // Perp flow
-            const perpNet = data.perpFlow.reduce((s, f) => s + f.netFlow, 0);
+            // Perp flow (aggregated across exchanges)
+            const perpNet = data.perpFlowTotal ? data.perpFlowTotal.total : data.perpFlow.reduce((s, f) => s + f.netFlow, 0);
             const pfEl = document.getElementById('perp-flow');
             pfEl.textContent = (perpNet >= 0 ? '+$' : '-$') + fmt(Math.abs(perpNet));
             pfEl.className = 'stat-value ' + (perpNet >= 0 ? 'positive' : 'negative');
-            document.getElementById('perp-flow-sub').textContent = data.perpFlow.length + ' periods';
+            
+            // Show top 3 perp contributors in subtitle
+            const pf = data.perpFlowTotal?.exchanges;
+            if (pf) {
+                const perpSorted = Object.entries(pf).sort((a,b) => Math.abs(b[1].net) - Math.abs(a[1].net)).slice(0,3);
+                const perpBreakdown = perpSorted.map(([ex, d]) => `${ex}: ${d.net >= 0 ? '+' : ''}${fmt(d.net)}`).join(' | ');
+                document.getElementById('perp-flow-sub').textContent = perpBreakdown;
+            } else {
+                document.getElementById('perp-flow-sub').textContent = data.perpFlow.length + ' periods';
+            }
             
             // Spot flow (aggregated across exchanges)
             const spotNet = data.spotFlowTotal ? data.spotFlowTotal.total : data.spotKlines.reduce((s, k) => s + k.netFlow, 0);
@@ -333,6 +344,26 @@
                 }).join('');
             } else {
                 document.getElementById('spot-flow-sub').textContent = data.spotKlines.length + ' periods';
+            }
+            
+            // Render perp flow breakdown
+            if (pf) {
+                const allPerpSorted = Object.entries(pf).sort((a,b) => Math.abs(b[1].net) - Math.abs(a[1].net));
+                const maxPerpNet = Math.max(...allPerpSorted.map(([,d]) => Math.abs(d.net)));
+                document.getElementById('perp-flow-breakdown').innerHTML = allPerpSorted.map(([ex, d]) => {
+                    const pct = Math.abs(d.net) / maxPerpNet * 100;
+                    const isPos = d.net >= 0;
+                    return `
+                        <div class="metric-row" style="align-items:center">
+                            <span style="width:70px">${ex}</span>
+                            <div style="flex:1;display:flex;align-items:center;gap:8px">
+                                <div style="width:${pct}%;min-width:2px;height:12px;background:${isPos ? 'rgba(63,185,80,0.6)' : 'rgba(248,81,73,0.6)'};border-radius:2px"></div>
+                                <span class="${isPos ? 'positive' : 'negative'}" style="font-family:monospace;font-size:12px">${isPos ? '+' : ''}$${fmt(Math.abs(d.net))}</span>
+                            </div>
+                            <span style="font-size:9px;color:#8b949e;width:80px;text-align:right">${d.source || ''}</span>
+                        </div>
+                    `;
+                }).join('');
             }
             
             // OI

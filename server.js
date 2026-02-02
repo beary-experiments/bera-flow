@@ -65,6 +65,12 @@ async function cachedFetch(key, fetchFn) {
 
 // Aggregate all exchange data
 async function getAllData(interval = '1d', limit = 7) {
+  // Calculate hours needed for the requested timeframe
+  const hoursMap = { '1h': 1, '4h': 4, '1d': 24 };
+  const hoursPerPeriod = hoursMap[interval] || 24;
+  const totalHours = hoursPerPeriod * limit;
+  
+  // Always fetch hourly data for alignment, then aggregate
   const periodMap = { '1h': '1h', '4h': '4h', '1d': '1d' };
   const okxPeriod = { '1h': '1H', '4h': '4H', '1d': '1D' };
   
@@ -134,8 +140,9 @@ async function getAllData(interval = '1d', limit = 7) {
       fetchJSON('https://fapi.binance.com/fapi/v1/openInterest?symbol=BERAUSDT')),
     cachedFetch('binance-futures-funding', () => 
       fetchJSON('https://fapi.binance.com/fapi/v1/fundingRate?symbol=BERAUSDT&limit=1')),
-    cachedFetch(`binance-taker-${interval}-${limit}`, () => 
-      fetchJSON(`https://fapi.binance.com/futures/data/takerlongshortRatio?symbol=BERAUSDT&period=${periodMap[interval]}&limit=${limit}`)),
+    // Always fetch hourly taker data for proper alignment across exchanges
+    cachedFetch(`binance-taker-1h-${totalHours}`, () => 
+      fetchJSON(`https://fapi.binance.com/futures/data/takerlongshortRatio?symbol=BERAUSDT&period=1h&limit=${totalHours}`)),
     cachedFetch('binance-ls-global', () => 
       fetchJSON('https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BERAUSDT&period=1d&limit=1')),
     cachedFetch('binance-ls-top', () => 
@@ -147,8 +154,9 @@ async function getAllData(interval = '1d', limit = 7) {
       fetchJSON('https://www.okx.com/api/v5/market/ticker?instId=BERA-USDT-SWAP')),
     cachedFetch('okx-funding', () => 
       fetchJSON('https://www.okx.com/api/v5/public/funding-rate?instId=BERA-USDT-SWAP')),
-    cachedFetch(`okx-taker-${interval}`, () => 
-      fetchJSON(`https://www.okx.com/api/v5/rubik/stat/taker-volume?ccy=BERA&instType=CONTRACTS&period=${okxPeriod[interval]}`)),
+    // Always fetch hourly taker data for proper alignment
+    cachedFetch(`okx-taker-1h-${totalHours}`, () => 
+      fetchJSON(`https://www.okx.com/api/v5/rubik/stat/taker-volume?ccy=BERA&instType=CONTRACTS&period=1H`)),
     cachedFetch('okx-oi', () => 
       fetchJSON('https://www.okx.com/api/v5/rubik/stat/contracts/open-interest-volume?ccy=BERA&period=1D')),
     // Bybit
@@ -399,53 +407,104 @@ async function getAllData(interval = '1d', limit = 7) {
       }
     },
     
-    // Perp taker flow (historical time series from Binance/OKX APIs - matched period count)
+    // Perp taker flow - aligned by UTC hour buckets
     perpFlow: (() => {
-      // Get Binance data (already limited by API)
       const binanceData = Array.isArray(binanceTakerFlow) ? binanceTakerFlow : [];
-      
-      // Take same number of periods from OKX (most recent)
       const okxDataRaw = okxTakerVol?.data || [];
-      const okxDataLimited = okxDataRaw.slice(0, limit); // Match the requested limit
       
-      return [
-        ...binanceData.map(d => ({
-          exchange: 'Binance', time: d.timestamp,
-          buyVol: +d.buyVol, sellVol: +d.sellVol,
-          netFlow: +d.buyVol - +d.sellVol, ratio: +d.buySellRatio
-        })),
-        ...okxDataLimited.map(d => ({
-          exchange: 'OKX', time: +d[0],
-          sellVol: +d[1], buyVol: +d[2],
-          netFlow: +d[2] - +d[1], ratio: +d[2] / +d[1]
-        }))
-      ].sort((a, b) => b.time - a.time);
+      // Create hourly buckets - round timestamps to hour
+      const hourBucket = (ts) => Math.floor(ts / 3600000) * 3600000;
+      
+      // Get the time range we want (most recent totalHours)
+      const now = Date.now();
+      const startTime = hourBucket(now) - (totalHours * 3600000);
+      
+      // Bucket Binance data by hour
+      const binanceByHour = {};
+      binanceData.forEach(d => {
+        const hour = hourBucket(d.timestamp);
+        if (hour >= startTime) {
+          binanceByHour[hour] = { buy: +d.buyVol, sell: +d.sellVol };
+        }
+      });
+      
+      // Bucket OKX data by hour  
+      const okxByHour = {};
+      okxDataRaw.forEach(d => {
+        const hour = hourBucket(+d[0]);
+        if (hour >= startTime) {
+          okxByHour[hour] = { buy: +d[2], sell: +d[1] };
+        }
+      });
+      
+      // Find common hours where both have data
+      const commonHours = Object.keys(binanceByHour).filter(h => okxByHour[h]).sort((a,b) => b-a);
+      
+      // Build aligned flow data
+      const aligned = [];
+      commonHours.slice(0, totalHours).forEach(hour => {
+        const h = +hour;
+        const b = binanceByHour[h];
+        const o = okxByHour[h];
+        if (b) aligned.push({ exchange: 'Binance', time: h, buyVol: b.buy, sellVol: b.sell, netFlow: b.buy - b.sell, ratio: b.buy / b.sell });
+        if (o) aligned.push({ exchange: 'OKX', time: h, buyVol: o.buy, sellVol: o.sell, netFlow: o.buy - o.sell, ratio: o.buy / o.sell });
+      });
+      
+      return aligned.sort((a, b) => b.time - a.time);
     })(),
     
-    // Aggregated perp flow across all exchanges with detailed breakdown (historical totals - matched period count)
+    // Aggregated perp flow - aligned by UTC hour buckets
     perpFlowTotal: (() => {
-      // Get Binance data (already limited by API)
       const binanceData = Array.isArray(binanceTakerFlow) ? binanceTakerFlow : [];
-      
-      // Take same number of periods from OKX (most recent)
       const okxDataRaw = okxTakerVol?.data || [];
-      const okxDataLimited = okxDataRaw.slice(0, limit); // Match the requested limit
+      
+      // Create hourly buckets
+      const hourBucket = (ts) => Math.floor(ts / 3600000) * 3600000;
+      const now = Date.now();
+      const startTime = hourBucket(now) - (totalHours * 3600000);
+      
+      // Bucket and filter data
+      const binanceByHour = {};
+      binanceData.forEach(d => {
+        const hour = hourBucket(d.timestamp);
+        if (hour >= startTime) binanceByHour[hour] = { buy: +d.buyVol, sell: +d.sellVol };
+      });
+      
+      const okxByHour = {};
+      okxDataRaw.forEach(d => {
+        const hour = hourBucket(+d[0]);
+        if (hour >= startTime) okxByHour[hour] = { buy: +d[2], sell: +d[1] };
+      });
+      
+      // Find common hours
+      const commonHours = Object.keys(binanceByHour).filter(h => okxByHour[h]);
+      
+      // Sum only common hours for fair comparison
+      const binanceSum = { buy: 0, sell: 0, periods: 0 };
+      const okxSum = { buy: 0, sell: 0, periods: 0 };
+      
+      commonHours.forEach(h => {
+        const b = binanceByHour[h];
+        const o = okxByHour[h];
+        binanceSum.buy += b.buy; binanceSum.sell += b.sell; binanceSum.periods++;
+        okxSum.buy += o.buy; okxSum.sell += o.sell; okxSum.periods++;
+      });
       
       return {
         exchanges: {
           Binance: { 
-            net: binanceData.reduce((sum, d) => sum + (+d.buyVol - +d.sellVol), 0),
-            buy: binanceData.reduce((sum, d) => sum + +d.buyVol, 0),
-            sell: binanceData.reduce((sum, d) => sum + +d.sellVol, 0),
-            periods: binanceData.length,
-            source: `${limit} periods`
+            net: binanceSum.buy - binanceSum.sell,
+            buy: binanceSum.buy,
+            sell: binanceSum.sell,
+            periods: binanceSum.periods,
+            source: `${binanceSum.periods}h aligned`
           },
           OKX: { 
-            net: okxDataLimited.reduce((sum, d) => sum + (+d[2] - +d[1]), 0),
-            buy: okxDataLimited.reduce((sum, d) => sum + +d[2], 0),
-            sell: okxDataLimited.reduce((sum, d) => sum + +d[1], 0),
-            periods: okxDataLimited.length,
-            source: `${limit} periods`
+            net: okxSum.buy - okxSum.sell,
+            buy: okxSum.buy,
+            sell: okxSum.sell,
+            periods: okxSum.periods,
+            source: `${okxSum.periods}h aligned`
           },
           Bybit: { 
             net: bybitPerpFlow.buyVol - bybitPerpFlow.sellVol, 

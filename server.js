@@ -71,6 +71,7 @@ async function getAllData(interval = '1d', limit = 7) {
   const [
     // Binance
     binanceSpotKlines,
+    okxKlines,
     binanceSpotTicker,
     binanceFuturesTicker,
     binanceFuturesOI,
@@ -122,6 +123,9 @@ async function getAllData(interval = '1d', limit = 7) {
     // Binance
     cachedFetch(`binance-klines-${interval}-${limit}`, () => 
       fetchJSON(`https://api.binance.com/api/v3/klines?symbol=BERAUSDT&interval=${interval}&limit=${limit}`)),
+    // OKX klines as fallback
+    cachedFetch(`okx-klines-${interval}-${limit}`, () => 
+      fetchJSON(`https://www.okx.com/api/v5/market/candles?instId=BERA-USDT&bar=${interval === '1h' ? '1H' : interval === '4h' ? '4H' : '1D'}&limit=${limit}`)),
     cachedFetch('binance-spot-ticker', () => 
       fetchJSON('https://api.binance.com/api/v3/ticker/24hr?symbol=BERAUSDT')),
     cachedFetch('binance-futures-ticker', () => 
@@ -213,8 +217,11 @@ async function getAllData(interval = '1d', limit = 7) {
       fetchJSON('https://api.bitget.com/api/v2/spot/market/fills?symbol=BERAUSDT&limit=200'))
   ]);
 
-  // Get current price for OI calculations
-  const currentPrice = binanceSpotTicker?.lastPrice ? +binanceSpotTicker.lastPrice : 0.45;
+  // Get current price for OI calculations (fallback chain: Binance -> OKX -> Bybit -> 0.45)
+  const currentPrice = binanceSpotTicker?.lastPrice ? +binanceSpotTicker.lastPrice 
+    : okxSpotTicker?.data?.[0]?.last ? +okxSpotTicker.data[0].last
+    : bybitSpotTicker?.result?.list?.[0]?.lastPrice ? +bybitSpotTicker.result.list[0].lastPrice
+    : 0.45;
   
   // KRW to USD conversion (approximate)
   const KRW_USD = 1450;
@@ -353,17 +360,28 @@ async function getAllData(interval = '1d', limit = 7) {
   // Process data
   const result = {
     price: currentPrice,
-    priceChange24h: binanceSpotTicker?.priceChangePercent ? +binanceSpotTicker.priceChangePercent : 0,
+    priceChange24h: binanceSpotTicker?.priceChangePercent ? +binanceSpotTicker.priceChangePercent 
+      : okxSpotTicker?.data?.[0]?.sodUtc0 ? ((currentPrice - +okxSpotTicker.data[0].sodUtc0) / +okxSpotTicker.data[0].sodUtc0 * 100)
+      : 0,
     
-    // Spot klines for flow calculation
-    spotKlines: (Array.isArray(binanceSpotKlines) ? binanceSpotKlines : []).map(k => ({
-      time: k[0],
-      exchange: 'Binance',
-      open: +k[1], high: +k[2], low: +k[3], close: +k[4],
-      volume: +k[5], quoteVolume: +k[7],
-      takerBuyQuote: +k[10],
-      netFlow: (2 * +k[10]) - +k[7]
-    })),
+    // Spot klines for flow calculation (Binance primary, OKX fallback)
+    spotKlines: (Array.isArray(binanceSpotKlines) && binanceSpotKlines.length > 0) 
+      ? binanceSpotKlines.map(k => ({
+          time: k[0],
+          exchange: 'Binance',
+          open: +k[1], high: +k[2], low: +k[3], close: +k[4],
+          volume: +k[5], quoteVolume: +k[7],
+          takerBuyQuote: +k[10],
+          netFlow: (2 * +k[10]) - +k[7]
+        }))
+      : (okxKlines?.data || []).map(k => ({
+          time: +k[0],
+          exchange: 'OKX',
+          open: +k[1], high: +k[2], low: +k[3], close: +k[4],
+          volume: +k[5], quoteVolume: +k[6],
+          takerBuyQuote: 0, // OKX doesn't provide taker buy in klines
+          netFlow: 0 // Can't calculate without taker data
+        })).reverse(),
     
     // Aggregated spot flow across all exchanges with detailed breakdown
     spotFlowTotal: {

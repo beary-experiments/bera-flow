@@ -77,11 +77,13 @@ async function collect() {
     const trades = await fetchJSON('https://api.binance.com/api/v3/trades?symbol=BERAUSDT&limit=1000');
     const ticker = await fetchJSON('https://api.binance.com/api/v3/ticker/24hr?symbol=BERAUSDT');
     let buy = 0, sell = 0;
-    for (const t of trades) {
-      const usd = +t.price * +t.qty;
-      if (t.isBuyerMaker) sell += usd; else buy += usd;
+    if (Array.isArray(trades)) {
+      for (const t of trades) {
+        const usd = +t.price * +t.qty;
+        if (t.isBuyerMaker) sell += usd; else buy += usd;
+      }
     }
-    record.spot.Binance = { buy, sell, net: buy - sell, price: +ticker.lastPrice };
+    record.spot.Binance = { buy, sell, net: buy - sell, price: +ticker?.lastPrice || 0 };
   } catch (e) { console.error('  Binance spot:', e.message); }
   
   // OKX Spot
@@ -131,9 +133,11 @@ async function collect() {
   try {
     const trades = await fetchJSON('https://api.mexc.com/api/v3/trades?symbol=BERAUSDT&limit=200');
     let buy = 0, sell = 0;
-    for (const t of trades || []) {
-      const usd = +t.quoteQty;
-      if (t.isBuyerMaker) sell += usd; else buy += usd;
+    if (Array.isArray(trades)) {
+      for (const t of trades) {
+        const usd = +t.quoteQty;
+        if (t.isBuyerMaker) sell += usd; else buy += usd;
+      }
     }
     record.spot.MEXC = { buy, sell, net: buy - sell };
   } catch (e) { console.error('  MEXC:', e.message); }

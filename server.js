@@ -399,36 +399,48 @@ async function getAllData(interval = '1d', limit = 7) {
       }
     },
     
-    // Perp taker flow (historical time series from Binance/OKX APIs)
+    // Get Binance time range to align OKX data
+    const binanceData = Array.isArray(binanceTakerFlow) ? binanceTakerFlow : [];
+    const binanceMinTime = binanceData.length ? Math.min(...binanceData.map(d => d.timestamp)) : 0;
+    const binanceMaxTime = binanceData.length ? Math.max(...binanceData.map(d => d.timestamp)) : Date.now();
+    
+    // Filter OKX data to match Binance time range (for fair comparison)
+    const okxDataRaw = okxTakerVol?.data || [];
+    const okxDataFiltered = okxDataRaw.filter(d => {
+      const ts = +d[0];
+      return ts >= binanceMinTime && ts <= binanceMaxTime;
+    });
+    
+    // Perp taker flow (historical time series from Binance/OKX APIs - aligned time range)
     perpFlow: [
-      ...(Array.isArray(binanceTakerFlow) ? binanceTakerFlow : []).map(d => ({
+      ...binanceData.map(d => ({
         exchange: 'Binance', time: d.timestamp,
         buyVol: +d.buyVol, sellVol: +d.sellVol,
         netFlow: +d.buyVol - +d.sellVol, ratio: +d.buySellRatio
       })),
-      ...(Array.isArray(okxTakerVol?.data) ? okxTakerVol.data : []).map(d => ({
+      ...okxDataFiltered.map(d => ({
         exchange: 'OKX', time: +d[0],
         sellVol: +d[1], buyVol: +d[2],
         netFlow: +d[2] - +d[1], ratio: +d[2] / +d[1]
       }))
     ].sort((a, b) => b.time - a.time),
     
-    // Aggregated perp flow across all exchanges with detailed breakdown (historical totals)
+    // Aggregated perp flow across all exchanges with detailed breakdown (historical totals - aligned periods)
     perpFlowTotal: {
       exchanges: {
         Binance: { 
-          net: (Array.isArray(binanceTakerFlow) ? binanceTakerFlow : []).reduce((sum, d) => sum + (+d.buyVol - +d.sellVol), 0),
-          buy: (Array.isArray(binanceTakerFlow) ? binanceTakerFlow : []).reduce((sum, d) => sum + +d.buyVol, 0),
-          sell: (Array.isArray(binanceTakerFlow) ? binanceTakerFlow : []).reduce((sum, d) => sum + +d.sellVol, 0),
-          periods: (Array.isArray(binanceTakerFlow) ? binanceTakerFlow : []).length,
-          source: 'historical (all periods)'
+          net: binanceData.reduce((sum, d) => sum + (+d.buyVol - +d.sellVol), 0),
+          buy: binanceData.reduce((sum, d) => sum + +d.buyVol, 0),
+          sell: binanceData.reduce((sum, d) => sum + +d.sellVol, 0),
+          periods: binanceData.length,
+          source: 'historical (aligned)'
         },
         OKX: { 
-          net: (okxTakerVol?.data || []).reduce((sum, d) => sum + (+d[2] - +d[1]), 0),
-          buy: (okxTakerVol?.data || []).reduce((sum, d) => sum + +d[2], 0),
-          sell: (okxTakerVol?.data || []).reduce((sum, d) => sum + +d[1], 0),
-          periods: (okxTakerVol?.data || []).length,
-          source: 'historical (all periods)'
+          net: okxDataFiltered.reduce((sum, d) => sum + (+d[2] - +d[1]), 0),
+          buy: okxDataFiltered.reduce((sum, d) => sum + +d[2], 0),
+          sell: okxDataFiltered.reduce((sum, d) => sum + +d[1], 0),
+          periods: okxDataFiltered.length,
+          source: 'historical (aligned)'
         },
         Bybit: { 
           net: bybitPerpFlow.buyVol - bybitPerpFlow.sellVol, 

@@ -302,10 +302,12 @@
             pfEl.textContent = (perpNet >= 0 ? '+$' : '-$') + fmt(Math.abs(perpNet));
             pfEl.className = 'stat-value ' + (perpNet >= 0 ? 'positive' : 'negative');
             
-            // Show top 3 perp contributors in subtitle
+            // Show top 3 perp contributors in subtitle (filter out blocked exchanges)
             const pf = data.perpFlowTotal?.exchanges;
             if (pf) {
-                const perpSorted = Object.entries(pf).sort((a,b) => Math.abs(b[1].net) - Math.abs(a[1].net)).slice(0,3);
+                const perpSorted = Object.entries(pf)
+                    .filter(([,d]) => d.buy > 0 || d.sell > 0)
+                    .sort((a,b) => Math.abs(b[1].net) - Math.abs(a[1].net)).slice(0,3);
                 const perpBreakdown = perpSorted.map(([ex, d]) => `${ex}: ${d.net >= 0 ? '+' : ''}${fmt(d.net)}`).join(' | ');
                 document.getElementById('perp-flow-sub').textContent = perpBreakdown;
             } else {
@@ -318,16 +320,20 @@
             sfEl.textContent = (spotNet >= 0 ? '+$' : '-$') + fmt(Math.abs(spotNet));
             sfEl.className = 'stat-value ' + (spotNet >= 0 ? 'positive' : 'negative');
             
-            // Show top 3 contributors in subtitle
+            // Show top 3 contributors in subtitle (filter out blocked exchanges)
             const sf = data.spotFlowTotal?.exchanges;
             if (sf) {
-                const sorted = Object.entries(sf).sort((a,b) => Math.abs(b[1].net) - Math.abs(a[1].net)).slice(0,3);
+                const sorted = Object.entries(sf)
+                    .filter(([,d]) => d.buy > 0 || d.sell > 0 || Math.abs(d.net) > 0)
+                    .sort((a,b) => Math.abs(b[1].net) - Math.abs(a[1].net)).slice(0,3);
                 const spotBreakdown = sorted.map(([ex, d]) => `${ex}: ${d.net >= 0 ? '+' : ''}${fmt(d.net)}`).join(' | ');
                 document.getElementById('spot-flow-sub').textContent = spotBreakdown;
                 
-                // Render detailed breakdown
-                const allSorted = Object.entries(sf).sort((a,b) => Math.abs(b[1].net) - Math.abs(a[1].net));
-                const maxNet = Math.max(...allSorted.map(([,d]) => Math.abs(d.net)));
+                // Render detailed breakdown (filter out exchanges with no data)
+                const allSorted = Object.entries(sf)
+                    .filter(([,d]) => d.buy > 0 || d.sell > 0 || Math.abs(d.net) > 0)
+                    .sort((a,b) => Math.abs(b[1].net) - Math.abs(a[1].net));
+                const maxNet = Math.max(...allSorted.map(([,d]) => Math.abs(d.net)), 1);
                 document.getElementById('spot-flow-breakdown').innerHTML = allSorted.map(([ex, d]) => {
                     const pct = Math.abs(d.net) / maxNet * 100;
                     const isPos = d.net >= 0;
@@ -346,10 +352,12 @@
                 document.getElementById('spot-flow-sub').textContent = data.spotKlines.length + ' periods';
             }
             
-            // Render perp flow breakdown
+            // Render perp flow breakdown (filter out exchanges with no data)
             if (pf) {
-                const allPerpSorted = Object.entries(pf).sort((a,b) => Math.abs(b[1].net) - Math.abs(a[1].net));
-                const maxPerpNet = Math.max(...allPerpSorted.map(([,d]) => Math.abs(d.net)));
+                const allPerpSorted = Object.entries(pf)
+                    .filter(([,d]) => d.buy > 0 || d.sell > 0) // Skip blocked exchanges
+                    .sort((a,b) => Math.abs(b[1].net) - Math.abs(a[1].net));
+                const maxPerpNet = Math.max(...allPerpSorted.map(([,d]) => Math.abs(d.net)), 1);
                 document.getElementById('perp-flow-breakdown').innerHTML = allPerpSorted.map(([ex, d]) => {
                     const pct = Math.abs(d.net) / maxPerpNet * 100;
                     const isPos = d.net >= 0;

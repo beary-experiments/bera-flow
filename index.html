@@ -56,6 +56,12 @@
         <h1>🐻 BERA Flow Dashboard</h1>
         <p class="subtitle">Real-time flow analysis • Spot + Perpetuals • 9 Exchanges incl. Upbit 🇰🇷</p>
         
+        <!-- Cloud provider notice banner -->
+        <div id="cloud-notice" style="display:none;background:linear-gradient(90deg,#1a1a2e,#16213e);border:1px solid #f59e0b;border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:12px">
+            <span style="color:#f59e0b;font-weight:600">⚠️ Cloud Provider Limitation:</span>
+            <span style="color:#c9d1d9"> Binance & Bybit APIs are blocked on cloud hosting. Using OKX data as fallback. Working on proxy solution for full coverage.</span>
+        </div>
+        
         <div class="controls">
             <span class="control-label">Timeframe:</span>
             <div class="control-group">
@@ -514,6 +520,14 @@
             // Spot table - update badge to show data source
             const spotSource = data.spotKlines[0]?.exchange || 'Binance';
             document.getElementById('spot-history-badge').textContent = spotSource;
+            
+            // Show cloud notice banner if using fallback (Binance blocked)
+            const cloudNotice = document.getElementById('cloud-notice');
+            if (spotSource !== 'Binance') {
+                cloudNotice.style.display = 'block';
+            } else {
+                cloudNotice.style.display = 'none';
+            }
             document.getElementById('spot-table').innerHTML = data.spotKlines.slice().reverse().map(k => {
                 const buyPct = (k.takerBuyQuote / k.quoteVolume) * 100;
                 return `
